@@ -1,7 +1,7 @@
 test_video_games.parquet
 train_video_games.parquet
 meta_video_games.parquet
-myenv/
+myenv310/
 __pycache__/
 csv_files/
 .ipynb_checkpoints/
