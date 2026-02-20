@@ -5,3 +5,5 @@ myenv310/
 __pycache__/
 csv_files/
 .ipynb_checkpoints/
+best_knn_model.pkl
+best_svd_model.pkl
