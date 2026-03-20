@@ -39,11 +39,11 @@ def tfidf_vectorizing(df: pd.DataFrame, column_name: str, stop_words: str | None
     tfidf_matrix = tfidf_vectorizer.fit_transform(text_series)
     return tfidf_vectorizer, tfidf_matrix
 
-
-def build_user_profiles(train_interactions: pd.DataFrame, tfidf_matrix, item_ids: Iterable, user_col: str = "user_id", item_col: str = "item_id"):
-    """Build user profiles by averaging item TF-IDF vectors for each user's interactions (primitive method)."""
-    if user_col not in train_interactions.columns or item_col not in train_interactions.columns:
-        raise KeyError(f"Expected columns '{user_col}' and '{item_col}' in train_interactions")
+# can we change this to weighted mean?
+def build_user_profiles(train_interactions: pd.DataFrame, tfidf_matrix, item_ids: Iterable, user_col: str = "user_id", item_col: str = "item_id", rating_col: str = "rating"):
+    """Build user profiles by rating-weighted averaging of item TF-IDF vectors."""
+    if user_col not in train_interactions.columns or item_col not in train_interactions.columns or rating_col not in train_interactions.columns:
+        raise KeyError(f"Expected columns '{user_col}', '{item_col}', and '{rating_col}' in train_interactions")
 
     item_ids_list = [str(x) for x in item_ids]
     if tfidf_matrix.shape[0] != len(item_ids_list):
@@ -51,8 +51,9 @@ def build_user_profiles(train_interactions: pd.DataFrame, tfidf_matrix, item_ids
 
     item_to_idx = {item_id: idx for idx, item_id in enumerate(item_ids_list)}
 
-    interactions = train_interactions[[user_col, item_col]].copy()
+    interactions = train_interactions[[user_col, item_col, rating_col]].copy()
     interactions[item_col] = interactions[item_col].astype(str)
+    interactions[rating_col] = pd.to_numeric(interactions[rating_col], errors="coerce").fillna(0.0)
     interactions = interactions[interactions[item_col].isin(item_to_idx)].copy()
 
     users = interactions[user_col].drop_duplicates().tolist()
@@ -61,13 +62,21 @@ def build_user_profiles(train_interactions: pd.DataFrame, tfidf_matrix, item_ids
 
     user_vectors = []
     for user_id in users:
-        user_item_ids = interactions.loc[interactions[user_col] == user_id, item_col].tolist()
+        user_rows = interactions.loc[interactions[user_col] == user_id, [item_col, rating_col]]
+        user_item_ids = user_rows[item_col].tolist()
         item_indices = [item_to_idx[item_id] for item_id in user_item_ids]
+        weights = np.maximum(user_rows[rating_col].to_numpy(dtype=float), 0.0)
 
         if not item_indices:
             user_vec = csr_matrix((1, tfidf_matrix.shape[1]))
         else:
-            user_vec = csr_matrix(tfidf_matrix[item_indices].mean(axis=0))
+            user_item_matrix = tfidf_matrix[item_indices]
+            weight_sum = weights.sum()
+            if weight_sum <= 0:
+                user_vec = csr_matrix(user_item_matrix.mean(axis=0))
+            else:
+                weighted_sum = user_item_matrix.multiply(weights.reshape(-1, 1)).sum(axis=0)
+                user_vec = csr_matrix(weighted_sum / weight_sum)
         user_vectors.append(user_vec)
 
     return vstack(user_vectors).tocsr()
