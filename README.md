@@ -1,45 +1,67 @@
 # Web Recommender Systems (WRS) 2026
-## Project - Amazon Reviews, Video Games
 
-Provided below is a concise overview of the dataset and its associated metadata.
+## Instructions on Armin’s code
 
-To facilitate data loading, we utilize the `Pandas` library. The following code snippet shows how to import a Parquet 
-file into a DataFrame:
+### How to run the notebooks
 
-    import pandas as pd
-    
-    def parquet_loader(path_file: str = "filename.parquet"):
-        print(f"[Parquet] Loading data: `{path_file}` file.")
-        return pd.read_parquet(path_file)
+Run **every notebook from top to bottom**, **all cells in order**, starting with **Week 6** and moving forward by week number:
+
+1. `week6.ipynb`
+2. `week7.ipynb`
+3. `week8.ipynb`
+4. `Week9.ipynb`
+5. `week10_v2.ipynb`
+6. `week11.ipynb`
+
+Do **not** skip weeks: later steps depend on outputs from earlier ones.
+
+### `evals_helper.py` (Week 10 and Week 11)
+
+Keep `**evals_helper.py`** in the project root next to the notebooks. **Week 10** and **Week 11** import it for shared evaluation and text-preprocessing helpers; without it, those notebooks will fail on `import evals_helper`.
+
+### Generated folders and downstream use
+
+When you run the pipeline, the repository will create (or fill) these directories:
+
+- `csv_files/` — preprocessed ratings, matrices, and prediction tables used downstream.
+- `**models/`** — trained model pickles (`best_knn_model.pkl`, `best_svd_model.pkl`, `best_content_based_model.pkl`) and cached LLM item-description CSVs where applicable.
+
+These folders are required for downstream notebooks; if they are missing or incomplete, later cells will fail when loading data or models.
+
+### Pre-built Gemma3 and Qwen3 description caches (LLM)
+
+Regenerating LLM descriptions with Ollama is **slow and resource-heavy**. For that reason, **pre-generated** description CSV files are expected to be provided (for example `gemma3_llm_item_descriptions.csv` and `qwen3_llm_item_descriptions.csv`).
+
+**Place those files under `models/`.** Week 11 is configured to read and update caches at:
+
+- `models/qwen3_llm_item_descriptions.csv` (when `model_name == "qwen3:4b"`)
+- `models/{model_name}_llm_item_descriptions.csv` (for other model names, e.g. `gemma3`)
+
+Ensure `models/` exists before running Week 11 if you are copying files in manually (the notebook also creates `models/` when saving).
+
+You still need a working **Ollama** setup if you run cells that call the API for new items; with a full cache, those calls are skipped for items already in the CSV.
+
+### External data you must supply
+
+- `**train_video_games.parquet`** and `**test_video_games.parquet**` at the project root (Week 6).
+- `**datasets/meta_video_games.parquet**` — item metadata (Week 9, Week 10, Week 11).
 
 ---
 
-### Data Description
+## Python environment
 
-The Video Games dataset is provided in Parquet format. It has been pre-partitioned into training and test sets, 
-following an 80/20 split respectively.
+Install a recent **Python 3.10+** interpreter. For a **dedicated virtual environment** do `python -m venv .venv` then activate it and install packages below. 
 
-The dataset comprises a total of 37,500 instances (interactions), featuring 1,389 unique users and 932 unique items.
+If you hit **import errors**, **version conflicts**, or **missing packages** while running a notebook, run the `**%pip install …`** cells at the **top** of that notebook first , or install the matching packages from the table below with `pip` in your venv.
 
-The dataset consists of the following fields:
-* `item_id`: A unique identifier for the video game.
-* `user_id`: A unique identifier for the user.
-* `rating`: The numerical score assigned by the user to the item.
 
-Each record (row) represents a specific User-Item interaction, mapping a given user to an item along with their 
-corresponding rating.
+| Notebook | Command                                                                                         |
+| -------- | ----------------------------------------------------------------------------------------------- |
+| Week 6   | `pip install pyarrow fastparquet matplotlib seaborn`                                            |
+| Week 7   | `pip install surprise pandas scikit-learn matplotlib seaborn fastparquet pyarrow numpy==1.26.4` |
+| Week 8   | `pip install pandas numpy scipy scikit-learn`                                                   |
+| Week 9   | `pip install spacy corenlp sentence-transformers`                                               |
+| Week 10  | `pip install pandas numpy scipy scikit-learn`                                                   |
+| Week 11  | `pip install ollama`                                                                            |
 
----
 
-### MetaData Description
-
-The provided metadata file is also supplied in Parquet format and contains detailed attributes for all items within 
-the Video Games dataset. This file allows for a deeper analysis of the items beyond simple identifiers.
-
-This file includes the following fields for every item: `item_id`, `title`, `description`, `features`, `categories`, 
-`details`, `rating_number`, and `average_rating`.
-
----
-
-The provided data are a revised, modified, and processed version of the Amazon Reviews 2023 Dataset 
-(Video Games category), which can be found at the following link: https://amazon-reviews-2023.github.io/index.html.

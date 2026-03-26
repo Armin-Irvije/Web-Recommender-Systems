@@ -7,11 +7,7 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 
 def preprocess_text_column(df: pd.DataFrame, column_name: str, copy_df: bool = True) -> pd.DataFrame:
-    """Normalize a text column.
-
-    By default this works on a copy so notebook cells do not accidentally mutate
-    shared dataframes.
-    """
+    """ text preprocessing for a single column."""
     # input validation
     if column_name not in df.columns:
         raise KeyError(f"Column '{column_name}' not found in dataframe")
@@ -22,6 +18,7 @@ def preprocess_text_column(df: pd.DataFrame, column_name: str, copy_df: bool = T
         .fillna("")
         .astype(str)
         .str.lower()
+        # Keep only word chars & whitespace, remove punctuation
         .str.replace(r"[^\w\s]", "", regex=True)
         .str.replace("\n", " ", regex=False)
         .str.replace("\r", " ", regex=False)
@@ -30,7 +27,7 @@ def preprocess_text_column(df: pd.DataFrame, column_name: str, copy_df: bool = T
 
 
 def tfidf_vectorizing(df: pd.DataFrame, column_name: str, stop_words: str | None = "english", **vectorizer_kwargs):
-    """Fit TF-IDF on a dataframe text column without mutating input data."""
+    """ Fit TF-IDF on a dataframe text column without mutating input data."""
     if column_name not in df.columns:
         raise KeyError(f"Column '{column_name}' not found in dataframe")
 
@@ -39,9 +36,9 @@ def tfidf_vectorizing(df: pd.DataFrame, column_name: str, stop_words: str | None
     tfidf_matrix = tfidf_vectorizer.fit_transform(text_series)
     return tfidf_vectorizer, tfidf_matrix
 
-# can we change this to weighted mean?
+# weighted average better than regular averge
 def build_user_profiles(train_interactions: pd.DataFrame, tfidf_matrix, item_ids: Iterable, user_col: str = "user_id", item_col: str = "item_id", rating_col: str = "rating"):
-    """Build user profiles by rating-weighted averaging of item TF-IDF vectors."""
+    """Build user profiles by rating weighted averaging of item TF-IDF vectors """
     if user_col not in train_interactions.columns or item_col not in train_interactions.columns or rating_col not in train_interactions.columns:
         raise KeyError(f"Expected columns '{user_col}', '{item_col}', and '{rating_col}' in train_interactions")
 
@@ -65,6 +62,7 @@ def build_user_profiles(train_interactions: pd.DataFrame, tfidf_matrix, item_ids
         user_rows = interactions.loc[interactions[user_col] == user_id, [item_col, rating_col]]
         user_item_ids = user_rows[item_col].tolist()
         item_indices = [item_to_idx[item_id] for item_id in user_item_ids]
+        
         weights = np.maximum(user_rows[rating_col].to_numpy(dtype=float), 0.0)
 
         if not item_indices:
@@ -73,6 +71,7 @@ def build_user_profiles(train_interactions: pd.DataFrame, tfidf_matrix, item_ids
             user_item_matrix = tfidf_matrix[item_indices]
             weight_sum = weights.sum()
             if weight_sum <= 0:
+                # when all weights are 0 treat interacted items equally
                 user_vec = csr_matrix(user_item_matrix.mean(axis=0))
             else:
                 weighted_sum = user_item_matrix.multiply(weights.reshape(-1, 1)).sum(axis=0)
@@ -90,7 +89,7 @@ def calculate_rmse(test_df: pd.DataFrame, predictions_df: pd.DataFrame, predicti
     )
     return mean_squared_error(merged_df[rating_col], merged_df[prediction_col], squared=False)
 
-
+# MAE
 def calculate_mae(test_df: pd.DataFrame, predictions_df: pd.DataFrame, prediction_col: str, user_col: str = "user_id", item_col: str = "item_id", rating_col: str = "rating") -> float:
     merged_df = pd.merge(
         test_df[[user_col, item_col, rating_col]],
@@ -100,7 +99,7 @@ def calculate_mae(test_df: pd.DataFrame, predictions_df: pd.DataFrame, predictio
     )
     return mean_absolute_error(merged_df[rating_col], merged_df[prediction_col])
 
-
+# Average Precision@10
 def average_precision_at_k(ranked_items: Iterable, relevant_items: set, k: int = 10) -> float:
     ranked_items = list(ranked_items)[:k]
     total_relevant = len(relevant_items)
@@ -118,6 +117,7 @@ def average_precision_at_k(ranked_items: Iterable, relevant_items: set, k: int =
 
 
 def _relevant_items_by_user(test_df: pd.DataFrame, relevance_threshold: float, user_col: str, item_col: str, rating_col: str) -> dict:
+    # Relevant items are those with rating >= 3
     return (
         test_df[test_df[rating_col] >= relevance_threshold]
         .groupby(user_col)[item_col]
@@ -127,6 +127,7 @@ def _relevant_items_by_user(test_df: pd.DataFrame, relevance_threshold: float, u
 
 
 def _ranked_recommendations_by_user(recommendations_df: pd.DataFrame, prediction_col: str, k: int, user_col: str, item_col: str) -> dict:
+    # Sort within each user by predicted score, then keep only the top-k items.
     top_k = (
         recommendations_df.sort_values([user_col, prediction_col], ascending=[True, False])
         .groupby(user_col, as_index=False, group_keys=False)
@@ -146,7 +147,7 @@ def calculate_hit_rate(test_df: pd.DataFrame, recommendations_df: pd.DataFrame, 
             hits += 1
     return hits / len(users) if len(users) > 0 else 0.0
 
-
+# Precision@10
 def calculate_precision_at_k(test_df: pd.DataFrame, recommendations_df: pd.DataFrame, prediction_col: str, k: int = 10, relevance_threshold: float = 3, user_col: str = "user_id", item_col: str = "item_id", rating_col: str = "rating") -> float:
     users = test_df[user_col].unique()
     relevant_by_user = _relevant_items_by_user(test_df, relevance_threshold, user_col, item_col, rating_col)
@@ -160,11 +161,12 @@ def calculate_precision_at_k(test_df: pd.DataFrame, recommendations_df: pd.DataF
             continue
         relevant_items = relevant_by_user.get(user_id, set())
         n_relevant = sum(item in relevant_items for item in ranked_items)
+        # Uses a fixed denominator k (not len(ranked_items)) to match the common "precision@k" definition.
         precision_scores.append(n_relevant / k if k > 0 else 0.0)
 
     return sum(precision_scores) / len(precision_scores) if precision_scores else 0.0
 
-
+# MAP@10
 def calculate_map_at_k(test_df: pd.DataFrame, recommendations_df: pd.DataFrame, prediction_col: str, k: int = 10, relevance_threshold: float = 3, user_col: str = "user_id", item_col: str = "item_id", rating_col: str = "rating"):
     users = test_df[user_col].unique()
     relevant_by_user = _relevant_items_by_user(test_df, relevance_threshold, user_col, item_col, rating_col)
@@ -182,7 +184,7 @@ def calculate_map_at_k(test_df: pd.DataFrame, recommendations_df: pd.DataFrame, 
     ap_df = pd.DataFrame(ap_rows)
     return ap_df, (ap_df["ap"].mean() if not ap_df.empty else 0.0)
 
-
+# MRR
 def calculate_mrr_at_k(test_df: pd.DataFrame, recommendations_df: pd.DataFrame, prediction_col: str, k: int = 10, relevance_threshold: float = 3, user_col: str = "user_id", item_col: str = "item_id", rating_col: str = "rating") -> float:
     users = test_df[user_col].unique()
     relevant_by_user = _relevant_items_by_user(test_df, relevance_threshold, user_col, item_col, rating_col)
@@ -200,7 +202,7 @@ def calculate_mrr_at_k(test_df: pd.DataFrame, recommendations_df: pd.DataFrame, 
 
     return sum(reciprocal_ranks) / len(reciprocal_ranks) if reciprocal_ranks else 0.0
 
-
+# Coverage
 def calculate_coverage_at_k(test_df: pd.DataFrame, recommendations_df: pd.DataFrame, prediction_col: str, k: int = 10, catalog_items: Iterable | None = None, user_col: str = "user_id", item_col: str = "item_id") -> float:
     users = test_df[user_col].unique()
     ranked_by_user = _ranked_recommendations_by_user(recommendations_df, prediction_col, k, user_col, item_col)
@@ -218,7 +220,7 @@ def calculate_coverage_at_k(test_df: pd.DataFrame, recommendations_df: pd.DataFr
 
 
 if __name__ == "__main__":
-    # Lightweight smoke test for safer preprocessing behavior.
+    #  smoke test for safe preprocessing behavior
     test_data = {"text": ["Hello, World!", "This is a test.\nNew line.", "Another test.\rCarriage return."]}
     df_test = pd.DataFrame(test_data)
 
