@@ -43,8 +43,9 @@ You still need a working **Ollama** setup if you run cells that call the API for
 
 ### External data you must supply
 
-- `**train_video_games.parquet`** and `**test_video_games.parquet**` at the project root (Week 6).
-- `**datasets/meta_video_games.parquet**` — item metadata (Week 9, Week 10, Week 11).
+- **Place all `.parquet` files in `datasets/`.**
+- `datasets/train_video_games.parquet` and `datasets/test_video_games.parquet` (Week 6).
+- `datasets/meta_video_games.parquet` item metadata (Week 9, Week 10, Week 11).
 
 ---
 
